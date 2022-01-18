@@ -994,6 +994,8 @@ contract IDO is IIDO, Ownable {
     uint256 public totalWhiteListed;
     uint256 public claimedAmount;
     uint256 public numBuyers;
+    uint256 public maxPublicSaleAmount;
+    uint256 public minPublicSaleAmount;
 
     bool public initialized;
     bool public whiteListEnabled;
@@ -1014,7 +1016,9 @@ contract IDO is IIDO, Ownable {
         uint256 totalAmount_,
         uint256 salePrice_,
         uint256 startOfSale_,
-        uint256 publicSaleAmount_
+        uint256 publicSaleAmount_,
+        uint256 minPublicSaleAmount_,
+        uint256 maxPublicSaleAmount_
     ) {
         require(reserve_ != address(0));
         require(staking_ != address(0));
@@ -1028,6 +1032,8 @@ contract IDO is IIDO, Ownable {
         salePrice = salePrice_;
         startOfSale = startOfSale_;
         publicSaleAmount = publicSaleAmount_;
+        maxPublicSaleAmount = maxPublicSaleAmount_;
+        minPublicSaleAmount = minPublicSaleAmount_;
     }
 
     /// @dev Only Emergency Use
@@ -1132,7 +1138,12 @@ contract IDO is IIDO, Ownable {
         require(!bought[msg.sender], "Already participated");
         require(amount > 0, "Amount must be > 0");
         uint256 purchaseAmount = _calculateSaleQuote(amount);
-        require(purchaseAmount <= getAllotmentPerBuyer(), "More than allotted");
+        if(whiteListEnabled) {
+            require(purchaseAmount <= maxPublicSaleAmount, "More than allotted");
+            require(purchaseAmount >= minPublicSaleAmount, "Less than allotted");
+        }else{
+            require(purchaseAmount <= amountRemaining, "More than remaining amount");
+        }
 
         bought[msg.sender] = true;
 
