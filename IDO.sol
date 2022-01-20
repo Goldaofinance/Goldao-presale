@@ -950,7 +950,6 @@ interface IIDO {
     function amountRemaining()         external returns (uint256);
     function reserve()                 external returns (address);
     function finalizer()               external returns (address);
-    function salePrice()               external returns (uint256);
     function closeSale()               external;
     function finalize(address native_) external;
 }
@@ -965,21 +964,20 @@ contract IDO is IIDO, Ownable {
     using SafeERC20 for IERC20;
 
     // Length of the private sale in seconds
-    uint256 constant public privateSaleSeconds = 1 days;
+    uint256 constant public privateSaleSeconds = 3 days;
     // Length of the public sale in seconds
-    uint256 constant public publicSaleSeconds = 1 days;
+    uint256 constant public publicSaleSeconds = 3 days;
 
     // Assumes a reserve token with 18 decimals
     address immutable public override reserve;
     address immutable public staking;
     address immutable public override finalizer;
 
-    // Amount (in wei) that can be purchased during the public sale
-    uint256 immutable public publicSaleAmount;
     // Total amount of native tokens for purchase
     uint256 immutable public override totalAmount;
-    // Reserve (in wei) per 1e9 native IE 100*1e18 is 100 reserve for 1 native
-    uint256 immutable public override salePrice;
+
+    uint256 immutable public publicSalePrice;
+    uint256 immutable public privateSalePrice;
 
     address public native;
 
@@ -994,8 +992,9 @@ contract IDO is IIDO, Ownable {
     uint256 public totalWhiteListed;
     uint256 public claimedAmount;
     uint256 public numBuyers;
-    uint256 public maxPublicSaleAmount;
-    uint256 public minPublicSaleAmount;
+    uint256 public maxPrivateSaleAmount;
+    uint256 public minPrivateSaleAmount;
+    uint256 public maxWhiteListed;
 
     bool public initialized;
     bool public whiteListEnabled;
@@ -1014,11 +1013,12 @@ contract IDO is IIDO, Ownable {
         address staking_,
         address finalizer_,
         uint256 totalAmount_,
-        uint256 salePrice_,
         uint256 startOfSale_,
-        uint256 publicSaleAmount_,
-        uint256 minPublicSaleAmount_,
-        uint256 maxPublicSaleAmount_
+        uint256 minPrivateSaleAmount_,
+        uint256 maxPrivateSaleAmount_,
+        uint256 publicSalePrice_,
+        uint256 privateSalePrice_,
+        uint256 maxWhiteListed_
     ) {
         require(reserve_ != address(0));
         require(staking_ != address(0));
@@ -1029,11 +1029,12 @@ contract IDO is IIDO, Ownable {
         finalizer = finalizer_;
         totalAmount = totalAmount_;
         amountRemaining = totalAmount_;
-        salePrice = salePrice_;
         startOfSale = startOfSale_;
-        publicSaleAmount = publicSaleAmount_;
-        maxPublicSaleAmount = maxPublicSaleAmount_;
-        minPublicSaleAmount = minPublicSaleAmount_;
+        maxPrivateSaleAmount = maxPrivateSaleAmount_;
+        minPrivateSaleAmount = minPrivateSaleAmount_;
+        publicSalePrice= publicSalePrice_;
+        privateSalePrice= privateSalePrice_;
+        maxWhiteListed=maxWhiteListed_;
     }
 
     /// @dev Only Emergency Use
@@ -1050,6 +1051,7 @@ contract IDO is IIDO, Ownable {
         returns (bool)
     {
         require(!saleStarted(), "Already started");
+        require(totalWhiteListed+buyers_.length<=maxWhiteListed, "Exceed the limit");
 
         totalWhiteListed = totalWhiteListed.add(buyers_.length);
 
@@ -1093,13 +1095,6 @@ contract IDO is IIDO, Ownable {
         return initialized;
     }
 
-    function getAllotmentPerBuyer() public view returns (uint256) {
-        if (whiteListEnabled) {
-            return amountRemaining.div(totalWhiteListed);
-        } else {
-            return Math.min(publicSaleAmount, amountRemaining);
-        }
-    }
 
     function calculateSaleQuote(uint256 paymentAmount_)
         external
@@ -1139,8 +1134,8 @@ contract IDO is IIDO, Ownable {
         require(amount > 0, "Amount must be > 0");
         uint256 purchaseAmount = _calculateSaleQuote(amount);
         if(whiteListEnabled) {
-            require(purchaseAmount <= maxPublicSaleAmount, "More than allotted");
-            require(purchaseAmount >= minPublicSaleAmount, "Less than allotted");
+            require(purchaseAmount <= maxPrivateSaleAmount, "More than allotted");
+            require(purchaseAmount >= minPrivateSaleAmount, "Less than allotted");
         }else{
             require(purchaseAmount <= amountRemaining, "More than remaining amount");
         }
@@ -1181,7 +1176,11 @@ contract IDO is IIDO, Ownable {
         require(amount > 0, "Nothing to withdraw");
 
         purchasedAmounts[msg.sender] = 0;
-        IERC20(reserve).safeTransfer(msg.sender, (amount * salePrice) / 1e9);
+        uint256 withdrawAmount=(amount * publicSalePrice) / 1e9;
+        if(whiteListed[msg.sender]) {
+            withdrawAmount=(amount * privateSalePrice) / 1e9;
+        }
+        IERC20(reserve).safeTransfer(msg.sender, withdrawAmount);
     }
 
     // internal view
@@ -1191,7 +1190,11 @@ contract IDO is IIDO, Ownable {
         view
         returns (uint256)
     {
-        return uint256(1e9).mul(paymentAmount_).div(salePrice);
+        if(whiteListEnabled) {
+            return uint256(1e9).mul(paymentAmount_).div(privateSalePrice);
+        }else{
+            return uint256(1e9).mul(paymentAmount_).div(publicSalePrice);
+        }
     }
 
     function closeSaleRequirements() internal view {

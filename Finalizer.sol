@@ -772,7 +772,7 @@ interface ITreasury {
         LIQUIDITYMANAGER,
         DEBTOR,
         REWARDMANAGER,
-        SSCR
+        SGOLD
     }
 
     function queue(MANAGING _managing, address _address) external returns (bool);
@@ -780,7 +780,7 @@ interface ITreasury {
     function pushManagement(address _newOwner) external;
     function pullManagement() external;
     function manager() external returns (address);
-    function SCR() external returns (address);
+    function GOLD() external returns (address);
     function secondsNeededForQueue() external returns (uint32);
     function deposit(
         uint256 _amount,
@@ -814,7 +814,6 @@ interface IIDO {
     function amountRemaining()         external returns (uint256);
     function reserve()                 external returns (address);
     function finalizer()               external returns (address);
-    function salePrice()               external returns (uint256);
     function closeSale()               external;
     function finalize(address native_) external;
 }
@@ -853,7 +852,7 @@ contract Finalizer is Ownable {
 
   uint256 constant public lpPercent  = 4000;  // Percent of funds raised for LP
   uint256 constant public teamComp   = 2000;  // Percent of funds raised sent to team wallet
-  uint256 constant public listMarkup = 13700; // Markup for market listing 
+  uint256 constant public listMarkup = 1600; // Markup for market listing 
 
   IFactory  immutable public factory;
   ITreasury immutable public treasury;
@@ -902,11 +901,11 @@ contract Finalizer is Ownable {
     require(treasury.secondsNeededForQueue() == 0, "Finalizer can't work unless queue delay is 0");
 
     IERC20 reserve = IERC20(ido.reserve());
-    address scr = treasury.SCR();
+    address gold = treasury.GOLD();
 
-    address lp = factory.getPair(scr, address(reserve));
+    address lp = factory.getPair(gold, address(reserve));
     if (lp == address(0)) {
-      lp = factory.createPair(scr, address(reserve));
+      lp = factory.createPair(gold, address(reserve));
     }
 
     require(lp != address(0), "LP pair not created");
@@ -918,7 +917,7 @@ contract Finalizer is Ownable {
     assert(treasury.queue(ITreasury.MANAGING.LIQUIDITYTOKEN, lp));
     assert(treasury.toggle(ITreasury.MANAGING.LIQUIDITYTOKEN, lp, lpBondingCalculator));
 
-    finalizeIDO(scr, lp, reserve);
+    finalizeIDO(gold, lp, reserve);
 
     assert(treasury.toggle(ITreasury.MANAGING.RESERVEDEPOSITOR, address(this), address(0)));
     assert(treasury.toggle(ITreasury.MANAGING.LIQUIDITYDEPOSITOR, address(this), address(0)));
@@ -930,7 +929,7 @@ contract Finalizer is Ownable {
   function mintLp(IERC20 reserve, address native_, address reserveNativeLP_) internal returns (uint256) {
     uint256 reserveAmountLP = (reserveRaised * lpPercent) / 1e4;
 
-    uint256 nativeAmountLP = (reserveRaised * lpPercent * 1e9) / (ido.salePrice() * listMarkup);
+    uint256 nativeAmountLP = (reserveRaised * lpPercent * 1e9) / (100 * 1e18 * listMarkup);
     uint256 amountSold = ido.totalAmount() - ido.amountRemaining();
     uint256 nativeMinted = treasury.deposit(
       (nativeAmountLP + amountSold)*1e9, address(reserve), 0
